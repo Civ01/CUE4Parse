@@ -67,15 +67,17 @@ namespace CUE4Parse.UE4.Objects.Engine.Curves
         {
             var initTime = inTime;
             var duration = maxTime - minTime;
+            if (duration <= 0f) return;
 
+            // UE uses FMath::FloorToInt here. Truncating toward zero breaks the first cycle on either side of the key range.
             if (inTime > maxTime)
             {
-                cycleCount = (int) ((maxTime - inTime) / duration);
+                cycleCount = (int) Math.Floor((maxTime - inTime) / duration);
                 inTime += duration * cycleCount;
             }
             else if (inTime < minTime)
             {
-                cycleCount = (int) ((inTime - minTime) / duration);
+                cycleCount = (int) Math.Floor((inTime - minTime) / duration);
                 inTime -= duration * cycleCount;
             }
 

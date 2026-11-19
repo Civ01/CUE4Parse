@@ -23,12 +23,20 @@ public class UCurveLinearColor : UCurveBase
         AdjustMinAlpha = GetOrDefault<float>(nameof(AdjustMinAlpha));
         AdjustMaxAlpha = GetOrDefault<float>(nameof(AdjustMaxAlpha));
 
-        for (var i = 0; i < Properties.Count; ++i)
+        // Channels left at their default value are not serialized, so map by ArrayIndex instead of by property order.
+        foreach (var property in Properties)
         {
-            if (Properties[i].Tag?.GenericValue is FScriptStruct { StructType: FStructFallback fallback })
+            if (property.Name.Text != nameof(FloatCurves) || property.ArrayIndex < 0 || property.ArrayIndex >= FloatCurves.Length)
+                continue;
+            if (property.Tag?.GenericValue is FScriptStruct { StructType: FStructFallback fallback })
             {
-                FloatCurves[i] = new FRichCurve(fallback);
+                FloatCurves[property.ArrayIndex] = new FRichCurve(fallback);
             }
+        }
+
+        for (var i = 0; i < FloatCurves.Length; i++)
+        {
+            FloatCurves[i] ??= new FRichCurve();
         }
     }
 

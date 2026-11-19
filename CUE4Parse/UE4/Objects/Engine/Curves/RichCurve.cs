@@ -289,7 +289,8 @@ public class FRichCurve : FRealCurve
         {
             //
         }
-        else if (numKeys < 2 || inTime <= Keys[0].Time)
+        // Boundaries match UE 5.x FRichCurve::Eval: strictly before the first key is pre-infinity, the last key itself is inside.
+        else if (numKeys < 2 || inTime < Keys[0].Time)
         {
             if (PreInfinityExtrap == ERichCurveExtrapolation.RCCE_Linear && numKeys > 1)
             {
@@ -313,7 +314,7 @@ public class FRichCurve : FRealCurve
                 interpVal = Keys[0].Value;
             }
         }
-        else if (inTime < Keys[numKeys - 1].Time)
+        else if (inTime <= Keys[numKeys - 1].Time)
         {
             // perform a lower bound to get the second of the interpolation nodes
             var first = 1;
@@ -394,6 +395,10 @@ public class FRichCurve : FRealCurve
             return WeightedEvalForTwoKeys(key1, key2, inTime);
         }
 
+        // Constant keys hold their value until the next key's time (UE::Curves::EvalForTwoKeys).
+        if (diff > 0f)
+            return inTime < key2.Time ? key1.Value : key2.Value;
+
         return key1.Value;
     }
 
@@ -424,7 +429,7 @@ public class FRichCurve : FRealCurve
         var key1TanY = sinAngle * leaveWeight + key1.Value;
         angle = Math.Atan(key2.ArriveTangent);
         cosAngle = Math.Cos(angle);
-        sinAngle = Math.Cos(angle);
+        sinAngle = Math.Sin(angle);
 
         double arriveWeight = key2.ArriveTangentWeight;
         if (key2.TangentWeightMode is RCTWM_WeightedNone or RCTWM_WeightedLeave)
