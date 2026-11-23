@@ -71,8 +71,13 @@ namespace CUE4Parse.FileProvider.Vfs
         public event EventHandler<int>? VfsMounted;
         public event EventHandler<int>? VfsUnmounted;
 
+        private readonly object _packageRefIndexLock = new();
+        private PackageRefIndex? _packageRefIndex;
+
         protected AbstractVfsFileProvider(VersionContainer? versions = null, StringComparer? pathComparer = null) : base(versions, pathComparer)
         {
+            VfsMounted += (_, _) => InvalidatePackageRefIndex();
+            VfsUnmounted += (_, _) => InvalidatePackageRefIndex();
             CustomEncryption = versions?.Game switch
             {
                 GAME_PaxDei or GAME_3on3FreeStyleRebound or GAME_FunkoFusion
@@ -555,25 +560,37 @@ namespace CUE4Parse.FileProvider.Vfs
             Files.AddFiles(onDemandFiles);
         }
 
+        /// <summary>
+        /// Hard package import graph of all mounted IoStore containers. Built on first use from the
+        /// container headers and rebuilt after containers are mounted or unmounted.
+        /// </summary>
+        public PackageRefIndex GetPackageRefIndex()
+        {
+            var index = Volatile.Read(ref _packageRefIndex);
+            if (index != null)
+                return index;
+
+            lock (_packageRefIndexLock)
+            {
+                return _packageRefIndex ??= PackageRefIndex.Build(MountedVfs, FilesById);
+            }
+        }
+
+        /// <summary>Drops the cached <see cref="PackageRefIndex"/>; the next call rebuilds it.</summary>
+        public void InvalidatePackageRefIndex() => Volatile.Write(ref _packageRefIndex, null);
+
+        /// <summary>Packages that hard-import <paramref name="asset"/> (IoStore packages only).</summary>
         public List<GameFile> ScanForPackageRefs(GameFile asset)
         {
-            if (asset is not FIoStoreEntry { IsUePackage: true })
+            if (asset is not FIoStoreEntry { IsUePackage: true } || !PackageRefIndex.TryGetPackageId(asset, out var id))
                 return [];
 
-            var package = LoadPackage(asset);
-            var id = FPackageId.FromName(package.Name);
+            var index = GetPackageRefIndex();
             var refList = new List<GameFile>();
-            foreach (var reader in MountedVfs)
+            foreach (var referencer in index.GetReferencers(id))
             {
-                if (reader is not IoStoreReader { ContainerHeader: { StoreEntries.Length: > 0 } header } ioReader)
-                    continue;
-                for (var i = 0; i < header.StoreEntries.Length; i++)
-                {
-                    if (header.StoreEntries[i].ImportedPackages.Contains(id) && ioReader.PackageIdIndex.TryGetValue(header.PackageIds[i], out var file))
-                    {
-                        refList.Add(file);
-                    }
-                }
+                if (index.TryGetFile(referencer, out var file))
+                    refList.Add(file);
             }
             return refList;
         }
